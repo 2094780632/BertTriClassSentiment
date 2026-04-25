@@ -39,7 +39,7 @@ class Config:
     # 预训练模型名称
     PRETRAINED_MODEL = 'bert-base-chinese'
     MAX_LEN = 128
-    NEUTRAL_THRESHOLD = 0.6
+    NEUTRAL_THRESHOLD = 0.35
 
 # ============ 级联预测器 ============
 class CascadePredictor:
