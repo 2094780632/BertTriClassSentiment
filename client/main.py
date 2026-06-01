@@ -16,7 +16,24 @@ from PyQt5.QtWidgets import (
     QFileDialog, QTableWidget, QTableWidgetItem, QHeaderView, QMessageBox,
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
-from PyQt5.QtGui import QFont
+from PyQt5.QtGui import QFont, QIcon
+import matplotlib
+import matplotlib.font_manager as fm
+# 查找系统可用的中文字体（优先等线）
+_chinese_keywords = ["dengxian", "deng", "yahei", "simhei", "simsun", "songti", "heiti", "kai", "ming", "fang", "noto", "wenquan"]
+_chinese_fonts = []
+for kw in _chinese_keywords:
+    matches = [f.name for f in fm.fontManager.ttflist if kw in f.name.lower()]
+    if matches:
+        _chinese_fonts.extend(matches)
+        break  # 找到第一个匹配的字体族就停止
+if _chinese_fonts:
+    matplotlib.rcParams["font.sans-serif"] = _chinese_fonts[:1] + matplotlib.rcParams["font.sans-serif"]
+else:
+    matplotlib.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "SimSun"] + matplotlib.rcParams["font.sans-serif"]
+matplotlib.rcParams["axes.unicode_minus"] = False
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
 from transformers import BertTokenizer
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -99,6 +116,36 @@ class BatchResultWindow(QWidget):
         v_label.setStyleSheet("color: #333; padding: 8px;")
         vlo.addWidget(v_label)
         layout.addWidget(verdict_group)
+
+        # 饼图
+        chart_group = QGroupBox("情感分布")
+        chart_group.setFont(QFont("等线", 14, QFont.Bold))
+        chart_layout = QVBoxLayout(chart_group)
+
+        fig = Figure(figsize=(4.5, 3.5), dpi=100)
+        fig.set_facecolor("#fafafa")
+        ax = fig.add_subplot(111)
+        labels = ["负面", "中性", "正面"]
+        sizes = [neg, neu, pos]
+        colors = ["#ff4d4f", "#faad14", "#52c41a"]
+        explode = (0.02, 0.02, 0.02)
+
+        wedges, texts, autotexts = ax.pie(
+            sizes, labels=labels, colors=colors, autopct="%1.1f%%",
+            startangle=90, explode=explode, textprops={"fontsize": 16}
+        )
+        for at in autotexts:
+            at.set_fontweight("bold")
+            at.set_fontsize(16)
+        for t in texts:
+            t.set_fontsize(16)
+            t.set_fontweight("bold")
+        ax.set_title(f"共 {total} 条评论", fontsize=18, fontweight="bold", color="#555")
+
+        canvas = FigureCanvas(fig)
+        canvas.setStyleSheet("background: #fafafa;")
+        chart_layout.addWidget(canvas)
+        layout.addWidget(chart_group)
 
 
 # ==================== 推理线程 ====================
@@ -586,9 +633,23 @@ class SentimentClient(QMainWindow):
 
 
 def main():
+    import os
+    import ctypes
+    os.environ["QT_LOGGING_RULES"] = "*.debug=false;*.warning=false"
+
+    # Windows 任务栏图标必须设置 AppUserModelID
+    if sys.platform == "win32":
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("TriClassSentiment.Client")
+
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     app.setFont(QFont("等线", 10))
+
+    # 设置应用图标
+    icon_path = os.path.join(os.path.dirname(__file__), "icon.ico")
+    if os.path.exists(icon_path):
+        app.setWindowIcon(QIcon(icon_path))
+
     window = SentimentClient()
     window.show()
     sys.exit(app.exec_())
