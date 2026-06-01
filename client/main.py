@@ -1,13 +1,30 @@
 """
 酒店评论情感分析客户端 - PyQt5
-基于 form.ui 构建界面，三个标签页：
-  Tab 0: 单条分析 - 输入文本，输出三分类概率
-  Tab 1: 批量预测 - 上传文件逐行分析
-  Tab 2: 监控分析 - 占位
+...
 """
-import csv
 import os
 import sys
+
+# ==== PyInstaller 打包后修复 torch DLL 路径（必须在 import torch 之前）====
+if getattr(sys, 'frozen', False):
+    _base = sys._MEIPASS
+    # onedir 模式下 DLL 实际放在 _internal/torch/lib
+    _internal = os.path.join(_base, '_internal')
+    _torch_lib_candidates = [
+        os.path.join(_internal, 'torch', 'lib'),
+        os.path.join(_base, 'torch', 'lib'),
+    ]
+    for _cand in _torch_lib_candidates:
+        if os.path.isdir(_cand):
+            if hasattr(os, 'add_dll_directory'):
+                try:
+                    os.add_dll_directory(_cand)
+                except OSError:
+                    pass
+            os.environ['PATH'] = _cand + os.pathsep + os.environ.get('PATH', '')
+            break
+
+import csv
 import torch
 from PyQt5 import uic
 from PyQt5.QtWidgets import (
@@ -18,6 +35,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QFont, QIcon
 import matplotlib
+matplotlib.use("Qt5Agg")  # 显式声明 Qt 后端，PyInstaller 打包必需
 import matplotlib.font_manager as fm
 # 查找系统可用的中文字体（优先等线）
 _chinese_keywords = ["dengxian", "deng", "yahei", "simhei", "simsun", "songti", "heiti", "kai", "ming", "fang", "noto", "wenquan"]

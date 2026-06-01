@@ -16,7 +16,15 @@ PROCESSED_DIR = os.path.join(BASE_DIR, "processed")
 os.makedirs(PROCESSED_DIR, exist_ok=True)
 
 # 模型保存路径
-MODEL_DIR = os.path.join(BASE_DIR, "models")
+# 打包后模型放在 exe 同级的 models/ 目录
+def _get_models_dir():
+    import sys
+    if getattr(sys, 'frozen', False):
+        return os.path.join(os.path.dirname(sys.executable), 'models')
+    else:
+        return os.path.join(BASE_DIR, 'models')
+
+MODEL_DIR = _get_models_dir()
 STAGE1_MODEL_DIR = os.path.join(MODEL_DIR, "stage1_neutral")
 STAGE2_MODEL_DIR = os.path.join(MODEL_DIR, "stage2_sentiment")
 os.makedirs(STAGE1_MODEL_DIR, exist_ok=True)
