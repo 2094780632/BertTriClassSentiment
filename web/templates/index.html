@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>酒店评论情感分析系统</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        :root {
+            --neg-color: #dc3545;
+            --neu-color: #ffc107;
+            --pos-color: #198754;
+        }
+        body { background: #f5f6fa; min-height: 100vh; }
+        .navbar-brand { font-weight: 700; letter-spacing: 1px; }
+        .card { border: none; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,.06); }
+        .card-header { border-radius: 12px 12px 0 0 !important; font-weight: 600; }
+        .result-emoji { font-size: 4rem; }
+        .prob-bar { height: 28px; border-radius: 6px; transition: width .4s ease; }
+        .neg-bg { background: var(--neg-color); }
+        .neu-bg { background: var(--neu-color); }
+        .pos-bg { background: var(--pos-color); }
+        .result-card { display: none; }
+        .spinner-border { width: 1.2rem; height: 1.2rem; }
+        .nav-link { font-weight: 500; }
+        .placeholder-icon { font-size: 4rem; color: #adb5bd; }
+        textarea { resize: none; }
+        textarea:focus { box-shadow: 0 0 0 0.2rem rgba(13,110,253,.15) !important; }
+    </style>
+</head>
+<body>
+
+<!-- 导航栏 -->
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary shadow-sm">
+    <div class="container">
+        <a class="navbar-brand" href="/">
+            <i class="bi bi-chat-square-text me-2"></i>酒店评论情感分析
+        </a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav ms-auto">
+                <li class="nav-item">
+                    <a class="nav-link {{ 'active' if active_tab == 'single' else '' }}" href="/">
+                        <i class="bi bi-pencil-square me-1"></i>单条分析
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {{ 'active' if active_tab == 'batch' else '' }}" href="/batch">
+                        <i class="bi bi-files me-1"></i>批量预测
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {{ 'active' if active_tab == 'monitor' else '' }} disabled" href="#" tabindex="-1">
+                        <i class="bi bi-graph-up me-1"></i>监控分析
+                    </a>
+                </li>
+            </ul>
+        </div>
+    </div>
+</nav>
+
+<!-- 主体 -->
+<div class="container py-4">
+
+    {% if active_tab == 'single' %}
+    <!-- ========== 单条分析 ========== -->
+    <div class="row justify-content-center">
+        <div class="col-lg-7">
+
+            <!-- 输入卡片 -->
+            <div class="card mb-4">
+                <div class="card-header bg-white border-bottom">
+                    <i class="bi bi-pencil-square text-primary me-2"></i>输入评论
+                </div>
+                <div class="card-body">
+                    <textarea id="inputText" class="form-control mb-3" rows="3"
+                              placeholder="请输入酒店评论文本，例如：酒店环境不错，服务也很热情，下次还会再来。"></textarea>
+                    <div class="d-flex gap-2 justify-content-center">
+                        <button id="submitBtn" class="btn btn-primary px-4" onclick="doPredict()">
+                            <i class="bi bi-search me-1"></i>开始分析
+                        </button>
+                        <button class="btn btn-outline-secondary px-3" onclick="clearAll()">
+                            <i class="bi bi-x-circle me-1"></i>清空
+                        </button>
+                    </div>
+                    <div id="loadingSpinner" class="text-center mt-2" style="display:none;">
+                        <div class="spinner-border text-primary spinner-border-sm me-2" role="status"></div>
+                        <small class="text-muted">正在分析...</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 结果卡片 -->
+            <div id="resultCard" class="card result-card">
+                <div class="card-header bg-white border-bottom">
+                    <i class="bi bi-bar-chart-fill text-primary me-2"></i>分析结果
+                </div>
+                <div class="card-body text-center">
+                    <div id="resultEmoji" class="result-emoji mb-2"></div>
+                    <h3 id="resultLabel" class="fw-bold mb-3"></h3>
+
+                    <!-- 三栏概率 -->
+                    <div class="row g-3">
+                        <div class="col-4">
+                            <div class="card bg-light">
+                                <div class="card-body py-2 text-center">
+                                    <small class="text-muted fw-bold">🔴 负面</small>
+                                    <div class="progress mt-1" style="height:24px;">
+                                        <div id="negBar" class="progress-bar neg-bg" style="width:0%">0%</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="card bg-light">
+                                <div class="card-body py-2 text-center">
+                                    <small class="text-muted fw-bold">🟡 中性</small>
+                                    <div class="progress mt-1" style="height:24px;">
+                                        <div id="neuBar" class="progress-bar neu-bg" style="width:0%">0%</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="card bg-light">
+                                <div class="card-body py-2 text-center">
+                                    <small class="text-muted fw-bold">🟢 正面</small>
+                                    <div class="progress mt-1" style="height:24px;">
+                                        <div id="posBar" class="progress-bar pos-bg" style="width:0%">0%</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    {% elif active_tab == 'batch' %}
+    <!-- ========== 批量预测 ========== -->
+    <div class="row justify-content-center">
+        <div class="col-lg-9">
+
+            <!-- 上传卡片 -->
+            <div class="card mb-4">
+                <div class="card-header bg-white border-bottom">
+                    <i class="bi bi-cloud-upload text-primary me-2"></i>上传文件
+                </div>
+                <div class="card-body">
+                    <div class="input-group">
+                        <input type="file" id="batchFile" class="form-control" accept=".csv,.txt">
+                        <button id="batchSubmitBtn" class="btn btn-primary px-4" onclick="doBatchPredict()">
+                            <i class="bi bi-rocket-takeoff me-1"></i>开始分析
+                        </button>
+                    </div>
+                    <div class="form-text">支持 CSV / TXT 格式，CSV 自动识别评论列</div>
+                    <div id="batchLoading" class="text-center mt-3" style="display:none;">
+                        <div class="spinner-border text-primary mb-2" role="status"></div>
+                        <div class="text-muted">正在逐行分析，请稍候...</div>
+                        <div class="progress mt-2" style="height: 6px;">
+                            <div id="batchProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" style="width:0%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 结果摘要卡片 -->
+            <div id="batchSummaryCard" class="card mb-4" style="display:none;">
+                <div class="card-header bg-white border-bottom">
+                    <i class="bi bi-pie-chart-fill text-primary me-2"></i>分析报告
+                </div>
+                <div class="card-body">
+                    <div class="row text-center g-3">
+                        <div class="col-4">
+                            <div class="card bg-light">
+                                <div class="card-body py-3">
+                                    <div style="font-size:2rem;">🔴</div>
+                                    <h4 id="negCount" class="fw-bold" style="color:var(--neg-color);">0</h4>
+                                    <small class="text-muted">条负面</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="card bg-light">
+                                <div class="card-body py-3">
+                                    <div style="font-size:2rem;">🟡</div>
+                                    <h4 id="neuCount" class="fw-bold" style="color:var(--neu-color);">0</h4>
+                                    <small class="text-muted">条中性</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="card bg-light">
+                                <div class="card-body py-3">
+                                    <div style="font-size:2rem;">🟢</div>
+                                    <h4 id="posCount" class="fw-bold" style="color:var(--pos-color);">0</h4>
+                                    <small class="text-muted">条正面</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <p id="batchVerdict" class="text-center fw-bold mt-3 mb-0"></p>
+                    <div class="row justify-content-center mt-4">
+                        <div class="col-md-6">
+                            <canvas id="batchPieChart" style="max-height:300px;"></canvas>
+                        </div>
+                    </div>
+                    <div class="text-center mt-4">
+                        <h6 class="text-muted mb-3">☁️ 词云分析</h6>
+                        <canvas id="wordCloudCanvas" width="600" height="300" style="max-width:100%; border-radius:8px; background:#f8f9fa;"></canvas>
+                    </div>
+                    <div class="d-flex justify-content-end mt-3">
+                        <button class="btn btn-outline-success btn-sm" onclick="exportCSV()">
+                            <i class="bi bi-download me-1"></i>导出 CSV
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 详细结果表格 -->
+            <div id="batchResultCard" class="card" style="display:none;">
+                <div class="card-header bg-white border-bottom">
+                    <i class="bi bi-table text-primary me-2"></i>详细结果
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width:60px;">#</th>
+                                    <th>评论文本</th>
+                                    <th style="width:90px;">结果</th>
+                                    <th style="width:200px;">负面 / 中性 / 正面</th>
+                                </tr>
+                            </thead>
+                            <tbody id="batchResultBody">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    {% elif active_tab == 'monitor' %}
+    <!-- ========== 监控分析（占位） ========== -->
+    <div class="row justify-content-center">
+        <div class="col-lg-6 text-center py-5">
+            <div class="placeholder-icon mb-3">🚧</div>
+            <h4 class="text-secondary mb-2">📊 监控分析</h4>
+            <p class="text-muted">实时监控分析请求量、响应时间、情感分布等指标。<br>此功能即将上线，敬请期待。</p>
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+
+<!-- 脚本 -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    async function doPredict() {
+        const text = document.getElementById('inputText').value.trim();
+        if (!text) { alert('请先输入评论文本'); return; }
+
+        document.getElementById('submitBtn').disabled = true;
+        document.getElementById('loadingSpinner').style.display = 'block';
+        document.getElementById('resultCard').style.display = 'none';
+
+        try {
+            const res = await fetch('/api/predict', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: text })
+            });
+            const data = await res.json();
+
+            if (data.error) { alert(data.error); return; }
+
+            // Emoji
+            const emojis = { 0: '🔴', 1: '🟡', 2: '🟢' };
+            document.getElementById('resultEmoji').textContent = emojis[data.label];
+            document.getElementById('resultLabel').textContent = data.label_name;
+
+            // 概率条
+            setBar('negBar', data.probs.negative);
+            setBar('neuBar', data.probs.neutral);
+            setBar('posBar', data.probs.positive);
+
+            document.getElementById('resultCard').style.display = 'block';
+        } catch (e) {
+            alert('请求失败: ' + e.message);
+        } finally {
+            document.getElementById('submitBtn').disabled = false;
+            document.getElementById('loadingSpinner').style.display = 'none';
+        }
+    }
+
+    function setBar(id, val) {
+        const bar = document.getElementById(id);
+        const pct = Math.round(val * 100);
+        bar.style.width = pct + '%';
+        bar.textContent = pct + '%';
+    }
+
+    function clearAll() {
+        document.getElementById('inputText').value = '';
+        document.getElementById('resultCard').style.display = 'none';
+    }
+
+    // 回车提交（仅在单条分析页面）
+    const inputEl = document.getElementById('inputText');
+    if (inputEl) {
+        inputEl.addEventListener('keydown', function(e) {
+            if (e.ctrlKey && e.key === 'Enter') doPredict();
+        });
+    }
+
+    // ========== 批量预测 ==========
+
+    let batchResultsData = [];
+    let batchPieChart = null;
+
+    function drawBatchPie(negCount, neuCount, posCount) {
+        const ctx = document.getElementById('batchPieChart').getContext('2d');
+        if (batchPieChart) batchPieChart.destroy();
+        batchPieChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['负面', '中性', '正面'],
+                datasets: [{
+                    data: [negCount, neuCount, posCount],
+                    backgroundColor: ['#dc3545', '#ffc107', '#198754'],
+                    borderWidth: 2,
+                    borderColor: '#fff',
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { font: { size: 14, weight: 'bold' }, padding: 20 }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => `${ctx.label}: ${ctx.raw} 条 (${((ctx.raw / (negCount + neuCount + posCount)) * 100).toFixed(1)}%)`
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    async function doBatchPredict() {
+        const fileInput = document.getElementById('batchFile');
+        const file = fileInput.files[0];
+        if (!file) { alert('请先选择文件'); return; }
+
+        document.getElementById('batchSubmitBtn').disabled = true;
+        document.getElementById('batchLoading').style.display = 'block';
+        document.getElementById('batchResultCard').style.display = 'none';
+        document.getElementById('batchSummaryCard').style.display = 'none';
+        document.getElementById('batchResultBody').innerHTML = '';
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            const res = await fetch('/api/batch', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await res.json();
+
+            if (data.error) { alert(data.error); return; }
+
+            batchResultsData = data.results;
+
+            // 渲染表格
+            const tbody = document.getElementById('batchResultBody');
+            const emojis = { 0: '🔴', 1: '🟡', 2: '🟢' };
+            data.results.forEach(r => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${r.index}</td>
+                    <td>${escapeHtml(r.text)}</td>
+                    <td>${emojis[r.label]} ${r.label_name}</td>
+                    <td><small>${(r.probs.negative*100).toFixed(1)}% / ${(r.probs.neutral*100).toFixed(1)}% / ${(r.probs.positive*100).toFixed(1)}%</small></td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            document.getElementById('batchResultCard').style.display = 'block';
+
+            // 摘要
+            document.getElementById('negCount').textContent = data.negative_count;
+            document.getElementById('neuCount').textContent = data.neutral_count;
+            document.getElementById('posCount').textContent = data.positive_count;
+
+            const total = data.total;
+            let verdict = '';
+            const pos = data.positive_count, neg = data.negative_count, neu = data.neutral_count;
+            if (pos >= neg && pos >= neu) {
+                verdict = pos/total > 0.6 ? '整体评价偏正面 👍' : '大部分评价为正面';
+            } else if (neg >= pos && neg >= neu) {
+                verdict = neg/total > 0.6 ? '整体评价偏负面 👎' : '大部分评价为负面';
+            } else {
+                verdict = '整体评价偏中性，意见分歧较大';
+            }
+            document.getElementById('batchVerdict').textContent = verdict;
+            document.getElementById('batchSummaryCard').style.display = 'block';
+
+            // 绘制饼图
+            drawBatchPie(data.negative_count, data.neutral_count, data.positive_count);
+
+            // 绘制词云
+            if (data.wordcloud && data.wordcloud.length > 0) {
+                drawWordCloud(data.wordcloud);
+            }
+
+        } catch (e) {
+            alert('请求失败: ' + e.message);
+        } finally {
+            document.getElementById('batchSubmitBtn').disabled = false;
+            document.getElementById('batchLoading').style.display = 'none';
+        }
+    }
+
+    function exportCSV() {
+        if (!batchResultsData.length) { alert('暂无数据'); return; }
+        let csv = '\uFEFF序号,评论文本,预测结果,负面概率,中性概率,正面概率\n';
+        batchResultsData.forEach(r => {
+            csv += `${r.index},"${r.text.replace(/"/g,'""')}",${r.label_name},${r.probs.negative},${r.probs.neutral},${r.probs.positive}\n`;
+        });
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'batch_result.csv'; a.click();
+        URL.revokeObjectURL(url);
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function drawWordCloud(words) {
+        const canvas = document.getElementById('wordCloudCanvas');
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        const w = canvas.width;
+        const h = canvas.height;
+        const cx = w / 2, cy = h / 2;
+
+        // 颜色池
+        const colors = ['#dc3545', '#fd7e14', '#ffc107', '#198754', '#0d6efd', '#6f42c1', '#d63384'];
+
+        // 按字号降序排列
+        const sorted = [...words].sort((a, b) => b.size - a.size);
+        const placed = [];  // {x, y, w, h}
+
+        function overlaps(rect) {
+            for (const p of placed) {
+                if (rect.x < p.x + p.w && rect.x + rect.w > p.x &&
+                    rect.y < p.y + p.h && rect.y + rect.h > p.y) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        for (const word of sorted) {
+            ctx.font = `bold ${word.size}px "Microsoft YaHei", "等线", sans-serif`;
+            const metrics = ctx.measureText(word.text);
+            const tw = metrics.width + 4;
+            const th = word.size + 6;
+
+            let placed_ok = false;
+            // 螺旋搜索位置
+            for (let r = 0; r < Math.max(w, h) && !placed_ok; r += 2) {
+                for (let theta = 0; theta < Math.PI * 2 && !placed_ok; theta += 0.3) {
+                    const x = cx + r * Math.cos(theta) - tw / 2;
+                    const y = cy + r * Math.sin(theta) - th / 2;
+                    const rect = { x, y, w: tw, h: th };
+                    if (x > 0 && y > 0 && x + tw < w && y + th < h && !overlaps(rect)) {
+                        placed.push(rect);
+                        ctx.fillStyle = colors[Math.floor(Math.random() * colors.length)];
+                        ctx.fillText(word.text, x + 2, y + word.size);
+                        placed_ok = true;
+                    }
+                }
+            }
+            // 太挤了放不下就跳过
+        }
+    }
+</script>
+
+</body>
+</html>
