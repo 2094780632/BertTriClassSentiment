@@ -10,35 +10,54 @@
 
 ```
 TriClassSentiment/
-├── client/                    # PyQt5 桌面客户端
-│   ├── main.py                #   GUI 主程序
-│   ├── form.ui                #   Qt Designer 界面文件
-│   ├── build.spec             #   PyInstaller 打包配置
-│   └── runtime_hook.py        #   运行时钩子（torch DLL 修复）
-├── data/                      # 原始数据集
-│   ├── ChnSentiCorp_htl_all.csv   # 酒店评论（正面/负面）
-│   ├── waimai_10k.csv             # 外卖评论（正面/负面）
-│   ├── ai_neutral.csv             # AI 生成的中性评论
-│   └── neutral_train_strict.csv   # 严格筛选的中性样本
-├── processed/                 # 预处理后数据（8:1:1 划分）
-├── scripts/                   # 核心代码
-│   ├── config.py              #   全局配置中心
-│   ├── model.py               #   模型定义（级联架构）
-│   ├── preprocess.py          #   数据预处理
-│   ├── trainer_utils.py       #   训练工具库
-│   ├── train_stage1.py        #   Stage1 训练：中性识别
-│   ├── train_stage2.py        #   Stage2 训练：情感二分类
-│   ├── evaluate.py            #   模型评估
-│   ├── inference.py           #   终端交互式推理
-│   └── predict.py             #   批量预测
-├── models/                    # 训练好的模型权重
-│   ├── stage1_neutral/        #   Stage1：中性 vs 非中性
-│   └── stage2_sentiment/      #   Stage2：负面 vs 正面
-├── web/                       # Flask Web 服务
-│   ├── app.py
-│   └── templates/index.html
-├── output/cascade_evaluation/ # 评估结果与图表
-└── requirements.txt
+├── client/                              # PyQt5 桌面客户端
+│   ├── main.py                          #   GUI主程序：文本输入、文件上传、结果展示
+│   ├── form.ui                          #   Qt Designer 界面布局文件
+│   ├── build.spec                       #   PyInstaller 打包配置
+│   └── runtime_hook.py                  #   运行时钩子（torch DLL路径修复）
+├── data/                                # 原始数据集
+│   ├── ChnSentiCorp_htl_all.csv         #   酒店评论情感数据（正面/负面）
+│   ├── neutral_train_strict.csv         #   高质量筛选的中性样本（score≥0.8）
+│   └── test_batch.csv                   #   批量测试样例
+├── processed/                           # 预处理后的数据集（8:1:1划分）
+│   ├── train.csv / val.csv / test.csv                   #   三分类全集划分
+│   ├── stage1_train.csv / stage1_val.csv / stage1_test.csv   #   Stage1：中性/非中性二分类
+│   └── stage2_train.csv / stage2_val.csv / stage2_test.csv   #   Stage2：负面/正面二分类（仅非中性）
+├── scripts/                             # 核心代码
+│   ├── config.py                        #   全局配置：路径、模型参数、训练超参
+│   ├── model.py                         #   模型定义：BertBinaryClassifier + CascadeSentimentModel
+│   ├── preprocess.py                    #   数据预处理：合并清洗、标签统一、数据集划分
+│   ├── trainer_utils.py                 #   训练工具库：Dataset封装、训练循环、早停策略
+│   ├── train_stage1.py                  #   Stage1训练：中性 vs 非中性二分类器
+│   ├── train_stage2.py                  #   Stage2训练：负面 vs 正面二分类器（仅非中性样本）
+│   ├── train.py                         #   早期训练脚本（旧版，保留参考）
+│   ├── train_model_strict.py            #   严格中性数据训练方案（方案A）
+│   ├── evaluate.py                      #   级联模型评估：Accuracy/F1/混淆矩阵
+│   ├── inference.py                     #   交互式推理（终端REPL）
+│   └── predict.py                       #   批量预测脚本（兼容新旧模型格式）
+├── models/                              # 训练好的模型权重
+│   ├── stage1_neutral/                  #   Stage1 中性识别模型（BERT + 分类头）
+│   │   ├── config.json                  #     模型配置
+│   │   ├── model.safetensors            #     模型权重
+│   │   └── tokenizer.json / tokenizer_config.json   #   分词器
+│   └── stage2_sentiment/                #   Stage2 情感二分类模型（BERT + 分类头）
+│       ├── config.json / model.safetensors          #   同Stage1结构
+│       └── tokenizer.json / tokenizer_config.json
+├── web/                                 # Flask Web 服务
+│   ├── app.py                           #   Flask主程序：单条/批量预测API
+│   └── templates/
+│       └── index.html                   #   Web前端页面
+├── output/                              # 评估输出
+│   └── cascade_evaluation/
+│       ├── evaluation_report.txt        #   评估报告文本
+│       ├── error_samples.csv            #   错误样本明细
+│       └── figures/                     #   可视化图表
+│           ├── 01_confusion_matrix.png        # 混淆矩阵
+│           ├── 02_metrics_bar.png             # 指标柱状图
+│           ├── 03_confidence_distribution.png # 置信度分布
+│           ├── 04_error_analysis.png          # 错误分析
+│           └── 05_dashboard.png               # 综合仪表盘
+└── requirements.txt                     # Python依赖清单
 ```
 
 ---
@@ -88,7 +107,7 @@ pip install -r requirements.txt
 python scripts/preprocess.py
 ```
 
-自动完成：合并原始 CSV → 清洗去重 → 8:1:1 分层划分 → 生成 Stage1/Stage2 二分类标签。
+自动完成：合并原始 CSV（酒店评论 + 严格筛选中性样本）→ 清洗去重、标签统一 → 8:1:1 分层划分 → 生成 Stage1/Stage2 二分类标签。
 
 ### 训练
 
@@ -98,6 +117,9 @@ python scripts/train_stage1.py
 
 # Stage2: 负面 vs 正面（仅非中性样本）
 python scripts/train_stage2.py
+
+# 方案A：使用严格筛选中性样本（score≥0.8）训练
+python scripts/train_model_strict.py
 ```
 
 模型将保存至 `models/stage1_neutral/` 和 `models/stage2_sentiment/`。
@@ -108,7 +130,7 @@ python scripts/train_stage2.py
 python scripts/evaluate.py
 ```
 
-输出：整体 Accuracy / Precision / Recall / F1、混淆矩阵、各类别指标。
+输出：整体 Accuracy / Precision / Recall / F1、混淆矩阵、各类别指标。结果保存至 `output/cascade_evaluation/`（评估报告、错误样本明细及 5 张可视化图表）。
 
 ### 交互式推理
 
@@ -117,6 +139,14 @@ python scripts/inference.py
 ```
 
 在终端输入中文评论，实时输出三分类结果及各分类概率。
+
+### 批量预测
+
+```bash
+python scripts/predict.py
+```
+
+批量预测脚本，兼容新旧模型格式，对 `data/test_batch.csv` 等样例文件批量输出预测结果。
 
 ---
 

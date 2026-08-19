@@ -35,6 +35,5 @@ Thumbs.db
 # 环境变量
 .env
 .env.local
-课程报告.md
-课程报告 origin.md
+docs/
 show_tree.py
